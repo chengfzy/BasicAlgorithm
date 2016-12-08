@@ -2,6 +2,9 @@
 //
 // 对于一个字节的无符号整型变量，求其二进制表示中1的个数
 //
+// Application:
+// 1. 图片相似度检测
+// 2. 文字匹配: Hamming Distance
 //=====================================================================
 
 #include <iostream>
@@ -20,7 +23,7 @@ int Method01(int n)
 	return count;
 }
 
-//方法2: n &= n - 1: 只考虑1的位数
+//方法2: n与n-1相与的最低位永远是0, 只考虑1的位数,当n中大多数据位是0时,采用该方法最好
 //引申：判断一个数是否为2的幂次方, n > 0 && ((n & (n-1)) == 0
 int Method02(int n)
 {
@@ -45,15 +48,6 @@ int Method03_HammingWeight(int n)
 	return n;
 }
 
-//方法4: n与n-1相与的最低位永远是0,当n中大多数据位是0时,采用该方法最好
-int Method04(int n)
-{
-	int count(0);
-	for (; n; ++count)
-		n &= n - 1;
-	return count;
-}
-
 
 int main()
 {
@@ -67,7 +61,6 @@ int main()
 	cout << "Method 01: " << Method01(n) << endl;
 	cout << "Method 02: " << Method02(n) << endl;
 	cout << "Method 03, Hamming Weight: " << Method03_HammingWeight(n) << endl;
-	cout << "Method 04: " << Method04(n) << endl;
 
 	system("pause");
 	return 0;

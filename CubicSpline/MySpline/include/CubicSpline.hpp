@@ -6,9 +6,9 @@
 #include "Eigen/SparseLU"
 
 /**
- * @brief Cubic spline to fit data. For input data (t, X), which t is Nx1 parameter data, X is N x (Dim - 1) data, try
- * to find cubic spine fi(X) = ai * (x - xi)^3 + bi * (x - xi)^2 + ci * (x - xi) + yi, where i in [0, N-1]. If not input
- * parameter data "t", will calculate chord length of X as parameter.
+ * @brief Cubic spline to fit data. For input data (t, X), which t is Nx1 parameter data, x is N x (Dim - 1) data, try
+ * to find cubic spine fi(t) = ai * (t - ti)^3 + bi * (t - ti)^2 + ci * (t - ti) + xi, where i in [0, N-1]. If not input
+ * parameter data "t", will calculate chord length of x as parameter.
  * @tparam Dim  Data dimension
  */
 template <unsigned int Dim = 2>
@@ -39,20 +39,31 @@ class CubicSpline {
     void build(const Eigen::Matrix<double, N, Dim - 1>& data);
 
     /**
-     * @brief Evaluate value at given position f(t)
-     * @tparam N    Data length
+     * @brief Evaluate value at given position t
      * @param t     Given position
-     * @return Spline value at position t
+     * @return Spline value f(t) at position t
      */
     Eigen::Matrix<double, Dim - 1, 1> operator()(const double& t) const;
 
     /**
-     * @brief Get coefficents at index
+     * @brief Evaluate derive f'(t) at given position t
+     * @param t Given position
+     * @return Derive value f'(t) at position
+     */
+    Eigen::Matrix<double, Dim - 1, 1> derive(const double& t) const;
+
+    /**
+     * @brief Get coefficients at index
      * @param index Index, should less than N
      * @return Coefficients, i,e, [a, b, c, d]
      */
     Eigen::Matrix<double, 4, Dim - 1> coeffAt(const std::size_t& index) const;
 
+    /**
+     * @brief Return the start parameters ti at index
+     * @param index Index of the spline
+     * @return Start parameters ti
+     */
     inline const double& startParamsAt(const std::size_t& index) const { return data_(index, 0); }
 
    private:
@@ -74,8 +85,8 @@ class CubicSpline {
      */
     void build();
 
-   public:
-    Eigen::MatrixXd data_;  // data include parameter vector, (t, X)
+   private:
+    Eigen::MatrixXd data_;  // data include parameter vector, (t, x)
     double tMin_;           // min value of parameter vector
     double tMax_;           // max value of parameter vector
     // poly coefficients, a, b, c, and d = y, the last coefficient a[n-1], b[n-1], c[n-1] for right extrapolation
@@ -143,10 +154,11 @@ void CubicSpline<Dim>::build(const Eigen::Matrix<double, N, Dim - 1>& data) {
 template <unsigned int Dim>
 Eigen::Matrix<double, Dim - 1, 1> CubicSpline<Dim>::operator()(const double& t) const {
     const Eigen::Index kN = data_.rows();
+
     // normalization
     double tt = normalizeParamVector(t);
 
-    // find the index t[idx] < t, and idx = 0 if t < t0, idx = n - 1 if t > t[n-1]
+    // find the index t[idx] < t, and idx = 0 if t < t0; idx = n - 1 if t > t[n-1]
     Eigen::Index idx{0};
     while (idx < kN && data_(idx, 0) < tt) {
         ++idx;
@@ -154,7 +166,6 @@ Eigen::Matrix<double, Dim - 1, 1> CubicSpline<Dim>::operator()(const double& t) 
     if (idx > 0) --idx;
 
     double h = tt - data_(idx, 0);
-
     Eigen::Matrix<double, Dim - 1, 1> ret = Eigen::Matrix<double, Dim - 1, 1>::Zero();
     if (tt < 0) {
         // left extrapolation
@@ -175,14 +186,50 @@ Eigen::Matrix<double, Dim - 1, 1> CubicSpline<Dim>::operator()(const double& t) 
     return ret;
 }
 
-// Get coefficents at index
+// Evaluate derive f'(t) at given position t
+template <unsigned int Dim>
+Eigen::Matrix<double, Dim - 1, 1> CubicSpline<Dim>::derive(const double& t) const {
+    const Eigen::Index kN = data_.rows();
+
+    // normalization
+    double tt = normalizeParamVector(t);
+
+    // find the index t[idx] < t, and idx = 0 if t < t0; idx = n - 1 if t > t[n-1]
+    Eigen::Index idx{0};
+    while (idx < kN && data_(idx, 0) < tt) {
+        ++idx;
+    }
+    if (idx > 0) --idx;
+
+    double h = tt - data_(idx, 0);
+    Eigen::Matrix<double, Dim - 1, 1> ret = Eigen::Matrix<double, Dim - 1, 1>::Zero();
+    if (tt < 0) {
+        // left extrapolation
+        for (std::size_t i = 0; i < Dim - 1; ++i) {
+            ret[i] = 2 * coeffs_[i](0, 1) * h + coeffs_[i](0, 2);
+        }
+    } else if (tt > 1) {
+        // right extrapolation
+        for (std::size_t i = 0; i < Dim - 1; ++i) {
+            ret[i] = 2 * coeffs_[i](kN - 1, 1) * h + coeffs_[i](kN - 1, 2);
+        }
+    } else {
+        // interpolation
+        for (std::size_t i = 0; i < Dim - 1; ++i) {
+            ret[i] = (3 * coeffs_[i](idx, 0) * h + 2 * coeffs_[i](idx, 1)) * h + coeffs_[i](idx, 2);
+        }
+    }
+    return ret / (tMax_ - tMin_);
+}
+
+// Get coefficients at index
 template <unsigned int Dim>
 Eigen::Matrix<double, 4, Dim - 1> CubicSpline<Dim>::coeffAt(const std::size_t& index) const {
     Eigen::Matrix<double, 4, Dim - 1> coeff = Eigen::Matrix<double, 4, Dim - 1>::Zero();
     if (index < data_.rows()) {
         for (std::size_t i = 0; i < Dim - 1; ++i) {
             coeff.col(i).topRows(3) = coeffs_[i].row(index);  // a, b, c
-            coeff(3, i) = data_(index, i + 1);                // d = y
+            coeff(3, i) = data_(index, i + 1);                // d = x
         }
     }
     return coeff;
@@ -238,8 +285,8 @@ void CubicSpline<Dim>::build() {
         }
 
         // boundary conditions, for extrapolation we use second order polynomials, i.e.,
-        // f(x) = b0 * (x - x0)^2 + c0 * (x - x0) + y0, for x <= x0
-        // f(x) = b[n-1] * (x - x[n-1])^2 + c[n-1] * (x - x[n-1] + y[n-1], for x >= x[n-1]
+        // f(t) = b0 * (t - t0)^2 + c0 * (t - x0) + x0, for t <= t0
+        // f(t) = b[n-1] * (t - t[n-1])^2 + c[n-1] * (t - t[n-1] + x[n-1], for t >= t[n-1]
         // so f'' = 2 * b = 0
         triplets.emplace_back(Triplet(0, 0, 2.0));
         triplets.emplace_back(Triplet(kN - 1, kN - 1, 2.0));
@@ -259,8 +306,8 @@ void CubicSpline<Dim>::build() {
             coeff(i, 0) = (coeff(i + 1, 1) - coeff(i, 1)) / h[i] / 3.0;
             coeff(i, 2) = dxh[i] - (coeff(i + 1, 1) + 2.0 * coeff(i, 1)) * h[i] / 3.0;
         }
-        // right boundary: fn(x) = bn * (x - xn)^2 + cn * (x - xn) + yn, for x >= xn
-        // fn'(xn) = f[n-1]'(xn), so cn = 3 * a[n-1] * (xn - x[n-1])^2 + 2 * b[n-1] * (xn - x[n-1]) + c[n-1]
+        // right boundary: fn(t) = bn * (t - tn)^2 + cn * (t - tn) + tn, for t >= tn
+        // fn'(tn) = f[n-1]'(tn), so cn = 3 * a[n-1] * (tn - t[n-1])^2 + 2 * b[n-1] * (tn - t[n-1]) + c[n-1]
         coeff(kN - 1, 2) =
             3.0 * coeff(kN - 2, 0) * h[kN - 2] * h[kN - 2] + 2.0 * coeff(kN - 2, 1) * h[kN - 2] + coeff(kN - 2, 2);
     }

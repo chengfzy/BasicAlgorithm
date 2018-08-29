@@ -23,7 +23,7 @@ std::vector<string> tokenize(const std::string& line, const std::string& separat
     return tokens;
 }
 
-// simple test, similar as tkSpline/main.cpp, the only different is the noramlization of t
+// simple test, similar as tkSpline/main.cpp, the only different is the normlization of t
 void simpleTest() {
     MatrixX2d data(5, 2);
     data << 0.100000, 0.100000, 0.400000, 0.700000, 1.200000, 0.600000, 1.800000, 1.100000, 2.000000, 0.900000;
@@ -32,11 +32,45 @@ void simpleTest() {
     // build and then interpolation
     CubicSpline2d spline;
     spline.build(data);
-    for (int i = -50; i < 250; i += 5) {
+
+    for (int i = -50; i < 260; i += 50) {
         double t = 0.01 * i;
-        printf("%f %f\n", t, spline(t)[0]);
+        cout << setprecision(15) << t << ", " << spline(t).transpose() << ", " << spline.derive(t) << endl;
     }
-    printf("\n");
+}
+
+// generate data of sin(t), and fit it then interpolate and evaluate derive
+void sinTest() {
+    auto func = [](const double& t) { return sin(t); };
+    auto dfunc = [](const double& t) { return cos(t); };
+
+    // generate data f(t) = sin(t), t = [-1.0, 2.0]
+    const double t0 = -1.0;
+    const double t1 = 2.0;
+    const double dt = 0.05;
+    const size_t kN = static_cast<size_t>((t1 - t0) / dt) + 1;
+    MatrixX2d data(kN, 2);
+    for (size_t i = 0; i < kN; ++i) {
+        double t = t0 + i * dt;
+        double x = func(t);
+        data(i, 0) = t;
+        data(i, 1) = x;
+    }
+
+    // spine fit
+    CubicSpline2d spline;
+    spline.build(data);
+
+    // interpolation and evaluate derive
+    for (int i = -50; i < 251; i += 10) {
+        double t = 0.01 * i;
+        double x = func(t);
+        double dx = dfunc(t);
+        auto fx = spline(t);
+        auto dfx = spline.derive(t);
+        cout << setprecision(15) << "t = " << t << ", x = " << x << ", fx = " << fx.transpose() << ", dx = " << dx
+             << ", dfx = " << dfx.transpose() << endl;
+    }
 }
 
 // complex test: used to fit GPS data
@@ -89,8 +123,9 @@ int main(int argc, char* argv[]) {
     google::InitGoogleLogging(argv[0]);
     google::ParseCommandLineFlags(&argc, &argv, true);
 
-    simpleTest();
-    complexTest();
+    //    simpleTest();
+    sinTest();
+    //     complexTest();
 
     google::ShutDownCommandLineFlags();
     google::ShutdownGoogleLogging();
